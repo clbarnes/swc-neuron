@@ -78,6 +78,11 @@ impl<T: StructureIdentifier> FromStr for SwcSample<T> {
             None => None,
         };
 
+        let count: usize = items.fold(0, |x, _| x + 1);
+        if count > 0 {
+            return Err(SampleParseError::IncorrectNumFields(7+count));
+        }
+
         Ok(Self {
             sample_id,
             structure,
