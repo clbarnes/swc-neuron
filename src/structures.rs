@@ -1,8 +1,27 @@
+use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::fmt::Debug;
 
-pub trait StructureIdentifier: Copy + Clone + Debug + TryFrom<isize> + Into<isize> {}
+pub trait StructureIdentifier: Copy + Clone + Debug + TryFrom<isize> + Into<isize> {
+    /// If the structure field allows for any value, return `None`;
+    /// otherwise, return `Some(HashSet<allowed_values>)`.
+    /// `no_catchall`, if `true`, ignores the "catch-all" variant
+    /// in determining what is allowed if present.
+    fn allowed_values(no_catchall: bool) -> Option<HashSet<isize>>;
+}
 
+/// Macro for creating a public enum implementing StructureIdentifier.
+///
+/// The first argument is the enum's identifier.
+/// Subsequent arguments are given in the form `value = variant`:
+/// that is, a signed integer literal, then an equals sign, then
+/// the identifier of the enum variant that literal represents.
+/// There is an optional final argument which is the identifier of a variant
+/// which catches all other values, and stores the value originally given to it.
+///
+/// If the final argument is given, the enum implements From<isize>:
+/// otherwise, it only implements TryFrom<isize>,
+/// returning an error which contains the offending integer.
 #[macro_export]
 macro_rules! structure_mapping {
     ( $id:ident $(, $val:literal = $name:ident )* $(,)?) => {
@@ -30,7 +49,11 @@ macro_rules! structure_mapping {
             }
         }
 
-        impl StructureIdentifier for $id {}
+        impl StructureIdentifier for $id {
+            fn allowed_values(_no_catchall: bool) -> Option<HashSet<isize>> {
+                Some(vec![$( $val, )*].into_iter().collect())
+            }
+        }
 
     };
     ( $id:ident $(, $val:literal = $name:ident )*, $othername:ident $(,)?) => {
@@ -58,11 +81,23 @@ macro_rules! structure_mapping {
             }
         }
 
-        impl StructureIdentifier for $id {}
+        impl StructureIdentifier for $id {
+            fn allowed_values(no_catchall: bool) -> Option<HashSet<isize>> {
+                if no_catchall {
+                    Some(vec![$( $val, )*].into_iter().collect())
+                } else {
+                    None
+                }
+            }
+        }
 
     };
 }
 
+/// Thin wrapper around the `structure_mapping` macro for producing enums
+/// which extend the Neuromorpho SWC standard (i.e. have additional structure types in the `Custom` block, 5+).
+///
+/// Again, you can either allow or disallow the catch-all case.
 #[macro_export]
 macro_rules! neuromorpho_ext {
     ( $id:ident $(, $val:literal = $name:ident )* $(,)?) => {
@@ -95,3 +130,4 @@ neuromorpho_ext!(CnicStructure, 5 = ForkPoint, 6 = EndPoint, 7 = Custom);
 neuromorpho_ext!(VnedStructure, 10 = SomaRelated, Custom);
 
 structure_mapping!(GulyasStructure, IsoDiameterStructure);
+structure_mapping!(AnyStructure, Any);
