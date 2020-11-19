@@ -8,7 +8,7 @@ use structopt::StructOpt;
 
 use swc_neuron::{
     AnyStructure, CnicStructure, GulyasStructure, NeuromorphoStructure, StructureIdentifier,
-    SwcNeuron, VnedStructure,
+    SwcNeuron, VnedStructure, Header,
 };
 
 #[derive(Debug, StructOpt)]
@@ -80,9 +80,9 @@ fn parse_structures(input: &str, no_catchall: bool) -> anyhow::Result<Option<Has
     }
 }
 
-fn bad_structures<S: StructureIdentifier>(
+fn bad_structures<S: StructureIdentifier, H: Header>(
     allowed: &HashSet<isize>,
-    neuron: &SwcNeuron<S>,
+    neuron: &SwcNeuron<S, H>,
 ) -> HashSet<isize> {
     let mut out = HashSet::default();
     for row in neuron.samples.iter() {
@@ -94,7 +94,7 @@ fn bad_structures<S: StructureIdentifier>(
     out
 }
 
-fn read<S: StructureIdentifier>(input: PathBuf) -> anyhow::Result<SwcNeuron<S>> {
+fn read<S: StructureIdentifier, H: Header>(input: PathBuf) -> anyhow::Result<SwcNeuron<S, H>> {
     if input == PathBuf::from("-") {
         Ok(SwcNeuron::from_reader(io::stdin())?)
     } else {
@@ -102,14 +102,14 @@ fn read<S: StructureIdentifier>(input: PathBuf) -> anyhow::Result<SwcNeuron<S>> 
     }
 }
 
-fn write<S: StructureIdentifier>(
+fn write<S: StructureIdentifier, H: Header>(
     output: Option<PathBuf>,
-    neuron: SwcNeuron<S>,
+    neuron: SwcNeuron<S, H>,
 ) -> anyhow::Result<()> {
     if output.is_none() || output == Some(PathBuf::from("-")) {
-        neuron.to_writer(&mut io::stdout(), None)?;
+        neuron.to_writer(&mut io::stdout())?;
     } else {
-        neuron.to_writer(&mut fs::File::create(output.unwrap())?, None)?;
+        neuron.to_writer(&mut fs::File::create(output.unwrap())?)?;
     }
     Ok(())
 }
@@ -121,7 +121,7 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
     let input = opt.input.unwrap();
-    let mut nrn: SwcNeuron<AnyStructure> = read(input)?;
+    let mut nrn: SwcNeuron<AnyStructure, String> = read(input)?;
 
     if let Some(s) = opt.structures {
         let allowed = parse_structures(&s[..], opt.no_catchall)?;

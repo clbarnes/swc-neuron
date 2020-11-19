@@ -12,6 +12,9 @@ pub use crate::structures::{
     VnedStructure,
 };
 
+mod header;
+pub use crate::header::Header;
+
 type SampleId = usize;
 type Radius = f64;
 
@@ -126,14 +129,16 @@ impl<S: StructureIdentifier> SwcSample<S> {
 }
 
 #[derive(Debug, Clone)]
-pub struct SwcNeuron<S: StructureIdentifier> {
+pub struct SwcNeuron<S: StructureIdentifier, H: Header> {
     pub samples: Vec<SwcSample<S>>,
+    pub header: Option<H>,
 }
 
-impl<S: StructureIdentifier> FromIterator<SwcSample<S>> for SwcNeuron<S> {
+impl<S: StructureIdentifier, H: Header> FromIterator<SwcSample<S>> for SwcNeuron<S, H> {
     fn from_iter<I: IntoIterator<Item = SwcSample<S>>>(iter: I) -> Self {
         SwcNeuron {
             samples: iter.into_iter().collect(),
+            header: None,
         }
     }
 }
@@ -144,6 +149,8 @@ pub enum SwcParseError {
     ReadError(#[from] std::io::Error),
     #[error("Sample parse error")]
     SampleParseError(#[from] SampleParseError),
+    #[error("Header parse error")]
+    HeaderParseError(String),
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -166,7 +173,7 @@ pub enum InconsistentNeuronError {
     DuplicateSampleError(SampleId),
 }
 
-impl<S: StructureIdentifier> SwcNeuron<S> {
+impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
     /// Sort the neuron's samples by their index.
     pub fn sort_index(mut self) -> Self {
         self.samples
@@ -199,7 +206,7 @@ impl<S: StructureIdentifier> SwcNeuron<S> {
             samples.push(row.with_ids(idx + 1, parent));
         }
 
-        Ok(Self { samples })
+        Ok(Self { samples, header: self.header })
     }
 
     /// Re-order its samples in pre-order depth first search.
@@ -275,7 +282,7 @@ impl<S: StructureIdentifier> SwcNeuron<S> {
         }
 
         if id_to_sample.is_empty() {
-            Ok(SwcNeuron { samples })
+            Ok(SwcNeuron { samples, header: self.header})
         } else {
             Err(InconsistentNeuronError::DisconnectedError)
         }
@@ -302,19 +309,19 @@ impl<S: StructureIdentifier> SwcNeuron<S> {
             }
             samples.push(SwcSample::from_str(&line)?);
         }
-        let header = header_lines.join("\n");
+        let header_str = header_lines.join("\n");
+        let header: H = header_str.parse().map_err(|_e| SwcParseError::HeaderParseError(header_str))?;
 
-        Ok(Self { samples })
+        Ok(Self { samples, header: Some(header) })
     }
 
     pub fn to_writer<W: Write>(
         &self,
         writer: &mut W,
-        header: Option<&str>,
     ) -> Result<(), std::io::Error> {
         let mut w = BufWriter::new(writer);
-        if let Some(s) = header {
-            for line in s.lines() {
+        if let Some(h) = self.header.clone() {
+            for line in h.to_string().lines() {
                 if !line.starts_with('#') {
                     writeln!(w, "# {}", line)?;
                 } else {
@@ -326,5 +333,10 @@ impl<S: StructureIdentifier> SwcNeuron<S> {
             writeln!(w, "{}", s.to_string())?;
         }
         Ok(())
+    }
+
+    /// Replace the existing header with a new one, returning the existing.
+    pub fn replace_header(&mut self, header: Option<H>) -> Option<H> {
+        std::mem::replace(&mut self.header, header)
     }
 }
