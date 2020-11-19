@@ -80,9 +80,9 @@ fn parse_structures(input: &str, no_catchall: bool) -> anyhow::Result<Option<Has
     }
 }
 
-fn bad_structures<T: StructureIdentifier>(
+fn bad_structures<S: StructureIdentifier>(
     allowed: &HashSet<isize>,
-    neuron: &SwcNeuron<T>,
+    neuron: &SwcNeuron<S>,
 ) -> HashSet<isize> {
     let mut out = HashSet::default();
     for row in neuron.samples.iter() {
@@ -94,7 +94,7 @@ fn bad_structures<T: StructureIdentifier>(
     out
 }
 
-fn read<T: StructureIdentifier>(input: PathBuf) -> anyhow::Result<SwcNeuron<T>> {
+fn read<S: StructureIdentifier>(input: PathBuf) -> anyhow::Result<SwcNeuron<S>> {
     if input == PathBuf::from("-") {
         Ok(SwcNeuron::from_reader(io::stdin())?)
     } else {
@@ -102,9 +102,9 @@ fn read<T: StructureIdentifier>(input: PathBuf) -> anyhow::Result<SwcNeuron<T>> 
     }
 }
 
-fn write<T: StructureIdentifier>(
+fn write<S: StructureIdentifier>(
     output: Option<PathBuf>,
-    neuron: SwcNeuron<T>,
+    neuron: SwcNeuron<S>,
 ) -> anyhow::Result<()> {
     if output.is_none() || output == Some(PathBuf::from("-")) {
         neuron.to_writer(&mut io::stdout(), None)?;

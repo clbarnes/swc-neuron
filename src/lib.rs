@@ -28,9 +28,9 @@ pub enum SampleParseError {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct SwcSample<T: StructureIdentifier> {
+pub struct SwcSample<S: StructureIdentifier> {
     pub sample_id: SampleId,
-    pub structure: T,
+    pub structure: S,
     pub x: f64,
     pub y: f64,
     pub z: f64,
@@ -38,7 +38,7 @@ pub struct SwcSample<T: StructureIdentifier> {
     pub parent_id: Option<SampleId>,
 }
 
-impl<T: StructureIdentifier> FromStr for SwcSample<T> {
+impl<S: StructureIdentifier> FromStr for SwcSample<S> {
     type Err = SampleParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -55,7 +55,7 @@ impl<T: StructureIdentifier> FromStr for SwcSample<T> {
             .ok_or(SampleParseError::IncorrectNumFields(1))?
             .parse::<isize>()?;
         let structure =
-            T::try_from(struct_int).map_err(|_e| SampleParseError::UnknownStructure(struct_int))?;
+            S::try_from(struct_int).map_err(|_e| SampleParseError::UnknownStructure(struct_int))?;
         let x = items
             .next()
             .ok_or(SampleParseError::IncorrectNumFields(2))?
@@ -95,7 +95,7 @@ impl<T: StructureIdentifier> FromStr for SwcSample<T> {
     }
 }
 
-impl<T: StructureIdentifier> ToString for SwcSample<T> {
+impl<S: StructureIdentifier> ToString for SwcSample<S> {
     fn to_string(&self) -> String {
         let structure: isize = self.structure.into();
         format!(
@@ -111,7 +111,7 @@ impl<T: StructureIdentifier> ToString for SwcSample<T> {
     }
 }
 
-impl<T: StructureIdentifier> SwcSample<T> {
+impl<S: StructureIdentifier> SwcSample<S> {
     fn with_ids(self, sample: SampleId, parent: Option<SampleId>) -> Self {
         SwcSample {
             sample_id: sample,
@@ -126,12 +126,12 @@ impl<T: StructureIdentifier> SwcSample<T> {
 }
 
 #[derive(Debug, Clone)]
-pub struct SwcNeuron<T: StructureIdentifier> {
-    pub samples: Vec<SwcSample<T>>,
+pub struct SwcNeuron<S: StructureIdentifier> {
+    pub samples: Vec<SwcSample<S>>,
 }
 
-impl<T: StructureIdentifier> FromIterator<SwcSample<T>> for SwcNeuron<T> {
-    fn from_iter<I: IntoIterator<Item = SwcSample<T>>>(iter: I) -> Self {
+impl<S: StructureIdentifier> FromIterator<SwcSample<S>> for SwcNeuron<S> {
+    fn from_iter<I: IntoIterator<Item = SwcSample<S>>>(iter: I) -> Self {
         SwcNeuron {
             samples: iter.into_iter().collect(),
         }
@@ -166,7 +166,7 @@ pub enum InconsistentNeuronError {
     DuplicateSampleError(SampleId),
 }
 
-impl<T: StructureIdentifier> SwcNeuron<T> {
+impl<S: StructureIdentifier> SwcNeuron<S> {
     /// Sort the neuron's samples by their index.
     pub fn sort_index(mut self) -> Self {
         self.samples
@@ -210,7 +210,7 @@ impl<T: StructureIdentifier> SwcNeuron<T> {
         // as indices into the original samples vec
         let mut parent_to_children: HashMap<SampleId, Vec<SampleId>> =
             HashMap::with_capacity(self.samples.len());
-        let mut id_to_sample: HashMap<SampleId, SwcSample<T>> =
+        let mut id_to_sample: HashMap<SampleId, SwcSample<S>> =
             HashMap::with_capacity(self.samples.len());
         let mut root = None;
 
