@@ -83,7 +83,7 @@ impl<S: StructureIdentifier> FromStr for SwcSample<S> {
 
         let count: usize = items.fold(0, |x, _| x + 1);
         if count > 0 {
-            return Err(SampleParseError::IncorrectNumFields(7+count));
+            return Err(SampleParseError::IncorrectNumFields(7 + count));
         }
 
         Ok(Self {
@@ -206,7 +206,10 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
             samples.push(row.with_ids(idx + 1, parent));
         }
 
-        Ok(Self { samples, header: self.header })
+        Ok(Self {
+            samples,
+            header: self.header,
+        })
     }
 
     /// Re-order its samples in pre-order depth first search.
@@ -282,7 +285,10 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
         }
 
         if id_to_sample.is_empty() {
-            Ok(SwcNeuron { samples, header: self.header})
+            Ok(SwcNeuron {
+                samples,
+                header: self.header,
+            })
         } else {
             Err(InconsistentNeuronError::DisconnectedError)
         }
@@ -301,24 +307,26 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
                 if is_header {
                     header_lines.push(line.trim_start_matches('#').trim_start().to_string());
                 }
-                continue
+                continue;
             }
             is_header = false;
             if line.is_empty() {
-                continue
+                continue;
             }
             samples.push(SwcSample::from_str(&line)?);
         }
         let header_str = header_lines.join("\n");
-        let header: H = header_str.parse().map_err(|_e| SwcParseError::HeaderParseError(header_str))?;
+        let header: H = header_str
+            .parse()
+            .map_err(|_e| SwcParseError::HeaderParseError(header_str))?;
 
-        Ok(Self { samples, header: Some(header) })
+        Ok(Self {
+            samples,
+            header: Some(header),
+        })
     }
 
-    pub fn to_writer<W: Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<(), std::io::Error> {
+    pub fn to_writer<W: Write>(&self, writer: &mut W) -> Result<(), std::io::Error> {
         let mut w = BufWriter::new(writer);
         if let Some(h) = self.header.clone() {
             for line in h.to_string().lines() {

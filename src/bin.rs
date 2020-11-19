@@ -7,8 +7,8 @@ use anyhow;
 use structopt::StructOpt;
 
 use swc_neuron::{
-    AnyStructure, CnicStructure, GulyasStructure, NeuromorphoStructure, StructureIdentifier,
-    SwcNeuron, VnedStructure, Header,
+    AnyStructure, CnicStructure, GulyasStructure, Header, NeuromorphoStructure,
+    StructureIdentifier, SwcNeuron, VnedStructure,
 };
 
 #[derive(Debug, StructOpt)]
