@@ -285,18 +285,24 @@ impl<S: StructureIdentifier> SwcNeuron<S> {
         let buf = BufReader::new(reader);
 
         let mut samples = Vec::default();
+        let mut is_header = true;
+        let mut header_lines = Vec::default();
         for result in buf.lines() {
             let raw_line = result.map_err(SwcParseError::ReadError)?;
             let line = raw_line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
+            if line.starts_with('#') {
+                if is_header {
+                    header_lines.push(line.trim_start_matches('#').trim_start().to_string());
+                }
+                continue
             }
-            let sample: SwcSample<T> = match SwcSample::from_str(&line) {
-                Err(SampleParseError::IncorrectNumFields(0)) => continue,
-                other => other,
-            }?;
-            samples.push(sample);
+            is_header = false;
+            if line.is_empty() {
+                continue
+            }
+            samples.push(SwcSample::from_str(&line)?);
         }
+        let header = header_lines.join("\n");
 
         Ok(Self { samples })
     }
