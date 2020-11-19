@@ -1,9 +1,9 @@
+use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::iter::FromIterator;
 use std::str::FromStr;
-use std::cmp::Reverse;
 
 mod structures;
 
@@ -11,8 +11,6 @@ pub use crate::structures::{
     AnyStructure, CnicStructure, GulyasStructure, NeuromorphoStructure, StructureIdentifier,
     VnedStructure,
 };
-// #[cfg(feature = "cli")]
-// pub mod bin;
 
 type SampleId = usize;
 type Radius = f64;
@@ -31,13 +29,13 @@ pub enum SampleParseError {
 
 #[derive(Debug, Clone, Copy)]
 pub struct SwcSample<T: StructureIdentifier> {
-    pub sample: SampleId,
+    pub sample_id: SampleId,
     pub structure: T,
     pub x: f64,
     pub y: f64,
     pub z: f64,
     pub radius: Radius,
-    pub parent: Option<SampleId>,
+    pub parent_id: Option<SampleId>,
 }
 
 impl<T: StructureIdentifier> FromStr for SwcSample<T> {
@@ -47,7 +45,7 @@ impl<T: StructureIdentifier> FromStr for SwcSample<T> {
         let trimmed = s.trim();
         let mut items = trimmed.split_whitespace();
 
-        let sample = items
+        let sample_id = items
             .next()
             .ok_or(SampleParseError::IncorrectNumFields(0))?
             .parse()?;
@@ -74,19 +72,20 @@ impl<T: StructureIdentifier> FromStr for SwcSample<T> {
             .next()
             .ok_or(SampleParseError::IncorrectNumFields(5))?
             .parse::<f64>()?;
-        let parent = match items.next() {
+        let parent_id = match items.next() {
+            Some("-1") => None,
             Some(p_str) => Some(p_str.parse()?),
             None => None,
         };
 
         Ok(Self {
-            sample,
+            sample_id,
             structure,
             x,
             y,
             z,
             radius,
-            parent,
+            parent_id,
         })
     }
 }
@@ -94,27 +93,29 @@ impl<T: StructureIdentifier> FromStr for SwcSample<T> {
 impl<T: StructureIdentifier> ToString for SwcSample<T> {
     fn to_string(&self) -> String {
         let structure: isize = self.structure.into();
-        let mut s = format!(
-            "{} {} {} {} {} {}",
-            self.sample, structure, self.x, self.y, self.z, self.radius
-        );
-        if let Some(p) = self.parent {
-            s = format!("{} {}", s, p)
-        }
-        s
+        format!(
+            "{} {} {} {} {} {} {}",
+            self.sample_id,
+            structure,
+            self.x,
+            self.y,
+            self.z,
+            self.radius,
+            self.parent_id.map_or("-1".to_string(), |p| p.to_string()),
+        )
     }
 }
 
 impl<T: StructureIdentifier> SwcSample<T> {
     fn with_ids(self, sample: SampleId, parent: Option<SampleId>) -> Self {
         SwcSample {
-            sample,
+            sample_id: sample,
             structure: self.structure,
             x: self.x,
             y: self.y,
             z: self.z,
             radius: self.radius,
-            parent,
+            parent_id: parent,
         }
     }
 }
@@ -164,7 +165,7 @@ impl<T: StructureIdentifier> SwcNeuron<T> {
     /// Sort the neuron's samples by their index.
     pub fn sort_index(mut self) -> Self {
         self.samples
-            .sort_unstable_by(|a, b| a.sample.cmp(&b.sample));
+            .sort_unstable_by(|a, b| a.sample_id.cmp(&b.sample_id));
         self
     }
 
@@ -175,13 +176,13 @@ impl<T: StructureIdentifier> SwcNeuron<T> {
             .samples
             .iter()
             .enumerate()
-            .map(|(idx, row)| (row.sample, idx + 1))
+            .map(|(idx, row)| (row.sample_id, idx + 1))
             .collect();
 
         let mut samples = Vec::with_capacity(self.samples.len());
         for (idx, row) in self.samples.into_iter().enumerate() {
             let parent;
-            if let Some(old) = row.parent {
+            if let Some(old) = row.parent_id {
                 parent = Some(
                     *old_to_new
                         .get(&old)
@@ -209,14 +210,14 @@ impl<T: StructureIdentifier> SwcNeuron<T> {
         let mut root = None;
 
         for row in self.samples {
-            if let Some(p) = row.parent {
+            if let Some(p) = row.parent_id {
                 let entry = parent_to_children.entry(p).or_insert_with(Vec::default);
-                entry.push(row.sample);
+                entry.push(row.sample_id);
                 id_to_sample
-                    .insert(row.sample, row)
-                    .ok_or_else(|| InconsistentNeuronError::DuplicateSampleError(row.sample))?;
+                    .insert(row.sample_id, row)
+                    .ok_or_else(|| InconsistentNeuronError::DuplicateSampleError(row.sample_id))?;
             } else if root.is_some() {
-                    return Err(InconsistentNeuronError::MultipleRootsError);
+                return Err(InconsistentNeuronError::MultipleRootsError);
             } else {
                 root = Some(row);
             }
@@ -228,7 +229,7 @@ impl<T: StructureIdentifier> SwcNeuron<T> {
         let mut next_id: SampleId = 1;
 
         if let Some(r) = root {
-            let children = parent_to_children.remove(&r.sample).map_or_else(
+            let children = parent_to_children.remove(&r.sample_id).map_or_else(
                 || Vec::with_capacity(0),
                 |mut v| {
                     v.sort_unstable_by_key(|&x| Reverse(x));
@@ -241,7 +242,7 @@ impl<T: StructureIdentifier> SwcNeuron<T> {
                 next_id += 1;
             } else {
                 samples.push(r);
-                to_visit.extend(children.into_iter().map(|c| (r.sample, c)));
+                to_visit.extend(children.into_iter().map(|c| (r.sample_id, c)));
             }
         } else {
             return Err(InconsistentNeuronError::NoRootError);
@@ -251,7 +252,7 @@ impl<T: StructureIdentifier> SwcNeuron<T> {
             let row = id_to_sample
                 .remove(&row_id)
                 .expect("Just constructed this vec");
-            let children = parent_to_children.remove(&row.sample).map_or_else(
+            let children = parent_to_children.remove(&row.sample_id).map_or_else(
                 || Vec::with_capacity(0),
                 |mut v| {
                     v.sort_unstable_by_key(|&id| Reverse(id));
@@ -264,7 +265,7 @@ impl<T: StructureIdentifier> SwcNeuron<T> {
                 next_id += 1;
             } else {
                 samples.push(row);
-                to_visit.extend(children.into_iter().map(|c| (row.sample, c)));
+                to_visit.extend(children.into_iter().map(|c| (row.sample_id, c)));
             }
         }
 

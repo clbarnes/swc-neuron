@@ -103,6 +103,7 @@ macro_rules! neuromorpho_ext {
     ( $id:ident $(, $val:literal = $name:ident )* $(,)?) => {
         structure_mapping!(
             $id,
+            -1 = Root,
             0 = Undefined,
             1 = Soma,
             2 = Axon,
@@ -114,6 +115,7 @@ macro_rules! neuromorpho_ext {
     ( $id:ident $(, $val:literal = $name:ident )*, $othername:ident $(,)?) => {
         structure_mapping!(
             $id,
+            -1 = Root,
             0 = Undefined,
             1 = Soma,
             2 = Axon,
