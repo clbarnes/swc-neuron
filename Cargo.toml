@@ -3,6 +3,8 @@ name = "swc-neuron"
 version = "0.1.0"
 authors = ["Chris Barnes <cbarnes@mrc-lmb.cam.ac.uk>"]
 edition = "2018"
+license = "MIT"
+description = "Library and CLI utility for interacting with SWC neuronal morphology files"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
