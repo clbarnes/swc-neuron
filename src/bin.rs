@@ -3,7 +3,6 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-use anyhow;
 use structopt::StructOpt;
 
 use swc_neuron::{
@@ -57,7 +56,7 @@ struct Opt {
 }
 
 fn parse_structures(input: &str, no_catchall: bool) -> anyhow::Result<Option<HashSet<isize>>> {
-    let mut elements = input.split(",");
+    let mut elements = input.split(',');
     let first_opt = elements.next();
     if first_opt.is_none() {
         return Ok(Some(HashSet::with_capacity(0)));
@@ -76,7 +75,7 @@ fn parse_structures(input: &str, no_catchall: bool) -> anyhow::Result<Option<Has
         }
         Ok(Some(v))
     } else {
-        return Ok(None);
+        Ok(None)
     }
 }
 

@@ -322,15 +322,14 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
             header = None;
         } else {
             let header_str = header_lines.join("\n");
-            header = Some(header_str
-                .parse()
-                .map_err(|_e| SwcParseError::HeaderParseError(header_str))?);
+            header = Some(
+                header_str
+                    .parse()
+                    .map_err(|_e| SwcParseError::HeaderParseError(header_str))?,
+            );
         }
 
-        Ok(Self {
-            samples,
-            header,
-        })
+        Ok(Self { samples, header })
     }
 
     pub fn to_writer<W: Write>(&self, writer: &mut W) -> Result<(), std::io::Error> {
