@@ -315,14 +315,21 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
             }
             samples.push(SwcSample::from_str(&line)?);
         }
-        let header_str = header_lines.join("\n");
-        let header: H = header_str
-            .parse()
-            .map_err(|_e| SwcParseError::HeaderParseError(header_str))?;
+
+        let header: Option<H>;
+
+        if header_lines.is_empty() {
+            header = None;
+        } else {
+            let header_str = header_lines.join("\n");
+            header = Some(header_str
+                .parse()
+                .map_err(|_e| SwcParseError::HeaderParseError(header_str))?);
+        }
 
         Ok(Self {
             samples,
-            header: Some(header),
+            header,
         })
     }
 
