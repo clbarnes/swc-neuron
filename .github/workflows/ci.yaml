@@ -1,0 +1,41 @@
+on: [push, pull_request]
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+
+  lint:
+    runs-on: ubuntu-18.04
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - run: cargo clippy
+      - run: cargo fmt -- --check
+
+  test:
+    runs-on: ubuntu-18.04
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - run: cargo test --all-features
+
+  deploy:
+    runs-on: ubuntu-18.04
+    needs: [lint, test]
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - run: cargo login ${CRATES_IO_TOKEN}
+        env:
+          CRATES_IO_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+      - run: cargo publish

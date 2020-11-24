@@ -12,6 +12,9 @@ thiserror = "1.0.20"
 structopt = {version = "0.3", optional = true}
 anyhow = {version = "1.0", optional = true}
 
+[dev-dependencies]
+cargo-release = "0.13"
+
 [features]
 default = []
 cli = ["structopt", "anyhow"]
@@ -24,3 +27,7 @@ path = "src/lib.rs"
 name = "swctool"
 path = "src/bin.rs"
 required-features = ["cli"]
+
+[package.metadata.release]
+disable-publish = true
+no-dev-version = true
