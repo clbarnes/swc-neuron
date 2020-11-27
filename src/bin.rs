@@ -135,8 +135,7 @@ fn main() -> anyhow::Result<()> {
     if opt.toposort {
         // implicitly sorts, validates; explicitly reindexes
         let sorted = nrn.sort_topo(opt.reindex)?;
-        write(opt.output, sorted)?;
-        return Ok(());
+        return write(opt.output, sorted);
     }
 
     // reindex -> sort would make the sort superfluous
