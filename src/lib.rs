@@ -1,5 +1,5 @@
 use std::cmp::Reverse;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::iter::FromIterator;
@@ -18,18 +18,28 @@ pub use crate::header::Header;
 type SampleId = usize;
 type Radius = f64;
 
+/// Error in parsing a SWC sample (row).
 #[derive(thiserror::Error, Debug)]
 pub enum SampleParseError {
+    /// A field which should be an integer could not be parsed.
     #[error("Integer field parse error")]
-    IntFieldError(#[from] std::num::ParseIntError),
+    IntField(#[from] std::num::ParseIntError),
+    /// A field which should be a float/ decimal could not be parsed.
     #[error("Float field parse error")]
-    FloatFieldError(#[from] std::num::ParseFloatError),
+    FloatField(#[from] std::num::ParseFloatError),
+    /// The value of the `structure` field was not recognised.
+    /// Not checked for structure enums with a catch-all variant.
     #[error("Reference to unknown structure {0}")]
     UnknownStructure(isize),
+    /// Line terminated early; more fields expected.
     #[error("Incorrect number of fields: found {0}")]
     IncorrectNumFields(usize),
 }
 
+/// Struct representing a row of a SWC file (a single sample from the neuron),
+/// which gives information about a single node in the tree.
+///
+/// If the `parent_id` is None, this is a root node.
 #[derive(Debug, Clone, Copy)]
 pub struct SwcSample<S: StructureIdentifier> {
     pub sample_id: SampleId,
@@ -115,6 +125,9 @@ impl<S: StructureIdentifier> ToString for SwcSample<S> {
 }
 
 impl<S: StructureIdentifier> SwcSample<S> {
+    /// Create a new [SwcSample] with  different sample and parent IDs.
+    ///
+    /// The other features are the same.
     fn with_ids(self, sample: SampleId, parent: Option<SampleId>) -> Self {
         SwcSample {
             sample_id: sample,
@@ -128,6 +141,7 @@ impl<S: StructureIdentifier> SwcSample<S> {
     }
 }
 
+/// Struct representing a neuron skeleton as a tree of [SwcSample]s.
 #[derive(Debug, Clone)]
 pub struct SwcNeuron<S: StructureIdentifier, H: Header> {
     pub samples: Vec<SwcSample<S>>,
@@ -143,34 +157,45 @@ impl<S: StructureIdentifier, H: Header> FromIterator<SwcSample<S>> for SwcNeuron
     }
 }
 
+/// Error for a SWC file which cannot be parsed
 #[derive(thiserror::Error, Debug)]
 pub enum SwcParseError {
+    /// A line could not be read from the file.
     #[error("Line read error")]
-    ReadError(#[from] std::io::Error),
+    Read(#[from] std::io::Error),
+    /// The line could not be parsed as a SwcSample.
     #[error("Sample parse error")]
-    SampleParseError(#[from] SampleParseError),
+    SampleParse(#[from] SampleParseError),
+    /// The SWC header could not be parsed.
     #[error("Header parse error")]
-    HeaderParseError(String),
+    HeaderParse(String),
 }
 
+/// Error where a sample refers to an unknown parent sample.
 #[derive(thiserror::Error, Debug)]
 #[error("Parent sample {parent_sample} does not exist")]
 pub struct MissingSampleError {
     parent_sample: usize,
 }
 
+/// Error where a neuron represented by a SWC file is inconsistent.
 #[derive(thiserror::Error, Debug)]
 pub enum InconsistentNeuronError {
+    /// Neuron is not a tree as it has multiple roots (parentless nodes).
     #[error("Neuron has >1 root")]
-    MultipleRootsError,
+    MultipleRoots,
+    /// Neuron is not a tree as it has several disconnected parts.
     #[error("Neuron has >1 connected component")]
-    DisconnectedError,
+    Disconnected,
+    /// Neuron has no root: it could be empty or be cyclic.
     #[error("Neuron has no root")]
     NoRootError,
+    /// Samples refer to unknown parent samples.
     #[error("Neuron has missing sample(s)")]
-    MissingSampleError(#[from] MissingSampleError),
+    MissingSample(#[from] MissingSampleError),
+    /// Samples have clashing IDs.
     #[error("Neuron has multiple samples numbered {0}")]
-    DuplicateSampleError(SampleId),
+    DuplicateSample(SampleId),
 }
 
 impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
@@ -230,9 +255,9 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
                 entry.push(row.sample_id);
                 id_to_sample
                     .insert(row.sample_id, row)
-                    .ok_or_else(|| InconsistentNeuronError::DuplicateSampleError(row.sample_id))?;
+                    .ok_or(InconsistentNeuronError::DuplicateSample(row.sample_id))?;
             } else if root.is_some() {
-                return Err(InconsistentNeuronError::MultipleRootsError);
+                return Err(InconsistentNeuronError::MultipleRoots);
             } else {
                 root = Some(row);
             }
@@ -290,10 +315,72 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
                 header: self.header,
             })
         } else {
-            Err(InconsistentNeuronError::DisconnectedError)
+            Err(InconsistentNeuronError::Disconnected)
+        }
+        // todo: possible MissingSampleError
+    }
+
+    /// Ensure that [SwcNeuron] is a self-consistent tree.
+    ///
+    /// If `ignore_order` is `true`, samples' parents must be defined before they are.
+    pub fn validate(&self, ignore_order: bool) -> Result<(), InconsistentNeuronError> {
+        use InconsistentNeuronError::*;
+
+        // use sample IDs
+        let mut parent_to_children: HashMap<SampleId, Vec<SampleId>> =
+            HashMap::with_capacity(self.samples.len());
+        let mut sample_ids: HashSet<usize> = HashSet::with_capacity(self.samples.len());
+        let mut root = None;
+
+        for row in self.samples.iter() {
+            if !sample_ids.insert(row.sample_id) {
+                return Err(DuplicateSample(row.sample_id));
+            }
+            if let Some(p) = row.parent_id {
+                if !ignore_order && !sample_ids.contains(&p) {
+                    return Err(MissingSample(MissingSampleError { parent_sample: p }));
+                }
+                let entry = parent_to_children.entry(p).or_default();
+                entry.push(row.sample_id);
+            } else if root.is_some() {
+                return Err(MultipleRoots);
+            } else {
+                root = Some(row.sample_id);
+            }
+        }
+
+        let Some(rt) = root else {
+            return Err(NoRootError);
+        };
+
+        let mut to_visit = Vec::default();
+        to_visit.push(rt);
+
+        while let Some(sample_id) = to_visit.pop() {
+            let children = parent_to_children
+                .remove(&sample_id)
+                .unwrap_or_else(|| Vec::with_capacity(0));
+            to_visit.extend(children.into_iter());
+        }
+
+        if parent_to_children.is_empty() {
+            Ok(())
+        } else if let Some((unknown_p, _)) = parent_to_children
+            .iter()
+            .take_while(|(p, _)| !sample_ids.contains(p))
+            .next()
+        {
+            Err(MissingSample(MissingSampleError {
+                parent_sample: *unknown_p,
+            }))
+        } else {
+            Err(Disconnected)
         }
     }
 
+    /// Parse a [SwcNeuron] from a [Read]er.
+    ///
+    /// Does not check the neuron for consistency, but does check for valid structures.
     pub fn from_reader<R: Read>(reader: R) -> Result<Self, SwcParseError> {
         let buf = BufReader::new(reader);
 
@@ -301,7 +388,7 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
         let mut is_header = true;
         let mut header_lines = Vec::default();
         for result in buf.lines() {
-            let raw_line = result.map_err(SwcParseError::ReadError)?;
+            let raw_line = result.map_err(SwcParseError::Read)?;
             let line = raw_line.trim();
             if line.starts_with('#') {
                 if is_header {
@@ -313,7 +400,7 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
             if line.is_empty() {
                 continue;
             }
-            samples.push(SwcSample::from_str(&line)?);
+            samples.push(SwcSample::from_str(line)?);
         }
 
         let header: Option<H>;
@@ -325,13 +412,14 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
             header = Some(
                 header_str
                     .parse()
-                    .map_err(|_e| SwcParseError::HeaderParseError(header_str))?,
+                    .map_err(|_e| SwcParseError::HeaderParse(header_str))?,
             );
         }
 
         Ok(Self { samples, header })
     }
 
+    /// Dump this [SwcNeuron] to a [Write]r.
     pub fn to_writer<W: Write>(&self, writer: &mut W) -> Result<(), std::io::Error> {
         let mut w = BufWriter::new(writer);
         if let Some(h) = self.header.clone() {
