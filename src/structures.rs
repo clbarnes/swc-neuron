@@ -41,10 +41,10 @@ macro_rules! structure_mapping {
             }
         }
 
-        impl Into<isize> for $id {
-            fn into(self) -> isize {
-                match self {
-                    $( Self::$name => $val, )*
+        impl From<$id> for isize {
+            fn from(val: $id) -> Self {
+                match val {
+                    $( $id::$name => $val, )*
                 }
             }
         }
@@ -72,11 +72,11 @@ macro_rules! structure_mapping {
             }
         }
 
-        impl Into<isize> for $id {
-            fn into(self) -> isize {
-                match self {
-                    $( Self::$name => $val, )*
-                    Self::$othername(x) => x,
+        impl From<$id> for isize {
+            fn from(val: $id) -> Self {
+                match val {
+                    $( $id::$name => $val, )*
+                    $id::$othername(x) => x,
                 }
             }
         }

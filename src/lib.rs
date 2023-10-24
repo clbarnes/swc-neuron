@@ -223,7 +223,7 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
                 parent = Some(
                     *old_to_new
                         .get(&old)
-                        .ok_or_else(|| MissingSampleError { parent_sample: old })?,
+                        .ok_or(MissingSampleError { parent_sample: old })?,
                 );
             } else {
                 parent = None;
@@ -251,7 +251,7 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
 
         for row in self.samples {
             if let Some(p) = row.parent_id {
-                let entry = parent_to_children.entry(p).or_insert_with(Vec::default);
+                let entry = parent_to_children.entry(p).or_default();
                 entry.push(row.sample_id);
                 id_to_sample
                     .insert(row.sample_id, row)
@@ -403,18 +403,16 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
             samples.push(SwcSample::from_str(line)?);
         }
 
-        let header: Option<H>;
-
-        if header_lines.is_empty() {
-            header = None;
+        let header: Option<H> = if header_lines.is_empty() {
+            None
         } else {
             let header_str = header_lines.join("\n");
-            header = Some(
+            Some(
                 header_str
                     .parse()
                     .map_err(|_e| SwcParseError::HeaderParse(header_str))?,
-            );
-        }
+            )
+        };
 
         Ok(Self { samples, header })
     }
