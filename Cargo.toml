@@ -29,5 +29,5 @@ path = "src/bin.rs"
 required-features = ["cli"]
 
 [package.metadata.release]
-disable-publish = true
-no-dev-version = true
+publish = false
+# no-dev-version = true
