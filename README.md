@@ -39,42 +39,42 @@ USAGE:
     swctool [FLAGS] [OPTIONS] [ARGS]
 
 FLAGS:
-    -h, --help           
+    -h, --help
             Prints help information
 
-    -n, --no-catchall    
+    -n, --no-catchall
             Some known sub-specifications have a "catch-all" structure which allows any value to be valid: this argument
             ignores that structure if "structures" is given
-    -r, --reindex        
+    -r, --reindex
             Reindex the samples, starting at 1 (happens after sorting)
 
-    -s, --sort           
+    -s, --sort
             Sort the samples by their sample number (happens before reindexing)
 
-    -t, --toposort       
+    -t, --toposort
             Sort the samples topologically in depth first preorder from the root; must be a valid tree
 
-    -u, --unordered      
+    -u, --unordered
             If using --validate, allow samples to be given out of order (i.e. parents can be defined after their
             children). Ignored if --validate is not given
-    -V, --validate       
+    -V, --validate
             Check that SWC describes a valid tree. --toposort also will also validate the tree structure
 
-        --version        
+        --version
             Prints version information
 
 
 OPTIONS:
-    -S, --structures <structures>    
+    -S, --structures <structures>
             If given, structure IDs will be checked against the given comma-separated list. Also accepts the names of
             known SWC sub-specifications: "neuromorpho", "cnic", "vned", "gulyas". If your schema extends a known sub-
             spec, give e.g. "cnic,8,9,10"
 
 ARGS:
-    <input>     
+    <input>
             Input file; reads from stdin if -
 
-    <output>    
+    <output>
             Output file; writes to stdout if empty or -
 
 ```
@@ -82,3 +82,7 @@ ARGS:
 ## Example data
 
 Provided by neuromorpho.org. Some are standardised, some are not.
+
+## Development
+
+Release tags etc. should be handled by cargo-release; the release itself is then made on CI.
