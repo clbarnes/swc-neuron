@@ -23,9 +23,14 @@ struct Opt {
     #[structopt(short, long)]
     toposort: bool,
 
-    /// Check that SWC describes a valid tree (implied by toposort)
+    /// Check that SWC describes a valid tree. --toposort also will also validate the tree structure.
     #[structopt(short = "V", long)]
     validate: bool,
+
+    /// If using --validate, allow samples to be given out of order (i.e. parents can be defined after their children).
+    /// Ignored if --validate is not given.
+    #[structopt(short = "u", long)]
+    unordered: bool,
 
     /// Sort the samples by their sample number (happens before reindexing)
     #[structopt(short, long)]
@@ -146,7 +151,7 @@ fn main() -> anyhow::Result<()> {
         nrn = nrn.reindex()?;
     }
     if opt.validate {
-        nrn.clone().sort_topo(false)?;
+        nrn.validate(opt.unordered)?;
     }
 
     write(opt.output, nrn)
