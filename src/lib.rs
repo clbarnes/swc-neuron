@@ -242,7 +242,6 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
     ///
     /// Returns an error if the neuron is not a self-consistent tree.
     pub fn sort_topo(self, reindex: bool) -> Result<Self, InconsistentNeuronError> {
-        // as indices into the original samples vec
         let mut parent_to_children: HashMap<SampleId, Vec<SampleId>> =
             HashMap::with_capacity(self.samples.len());
         let mut id_to_sample: HashMap<SampleId, SwcSample<S>> =
@@ -253,9 +252,9 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
             if let Some(p) = row.parent_id {
                 let entry = parent_to_children.entry(p).or_default();
                 entry.push(row.sample_id);
-                id_to_sample
-                    .insert(row.sample_id, row)
-                    .ok_or(InconsistentNeuronError::DuplicateSample(row.sample_id))?;
+                if id_to_sample.insert(row.sample_id, row).is_some() {
+                    return Err(InconsistentNeuronError::DuplicateSample(row.sample_id));
+                }
             } else if root.is_some() {
                 return Err(InconsistentNeuronError::MultipleRoots);
             } else {
