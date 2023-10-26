@@ -1,7 +1,29 @@
+//! Rust library for reading, writing, and manipulating SWC files for neuronal morphology.
+//! Also includes a CLI for basic validation, sorting, and reindexing (with optional feature `cli`).
+//!
+//! The format was originally proposed in [Cannon, et al. 1998](http://dx.doi.org/10.1016/S0165-0270(98)00091-0),
+//! with an implementation in [dohalloran/SWC_BATCH_CHECK](https://github.com/dohalloran/SWC_BATCH_CHECK).
+//!
+//! While commonly used, many variants exist; this implementation tries to cover the "standardised" version described
+//! [here](http://www.neuronland.org/NLMorphologyConverter/MorphologyFormats/SWC/Spec.html),
+//! with some ambiguities resolved by the [SWCplus specification](https://neuroinformatics.nl/swcPlus/).
+//!
+//! The header is a series of `#`-prefixed lines starting at the beginning of the file.
+//! Blank lines (i.e. without a `#` or any other non-whitespace content) do not interrupt the header,
+//! but are also not included in the parsed header.
+//! All other `#`-prefixed and all whitespace-only lines in the file after the first sample are ignored.
+//! Samples define a sample ID, a structure represented by that sample, its location, radius,
+//! and the sample ID of the sample's parent in the neuron's tree structure (the root's parent is `-1`).
+//!
+//! The [SwcNeuron] is generic over implementors of [StructureIdentifier] and [Header],
+//! and can be parsed from [Read]ers and dumped to [Write]rs.
+//! [StructureIdentifier] is implemented for some known sub-specifications.
+//! [Header] is implemented for [String] (i.e. a free-text header field).
+//! [AnySwc] is a [SwcNeuron] with any structure integer and string header.
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
-use std::io::{BufRead, BufReader, BufWriter, Read, Write};
+use std::io::{BufRead, Write};
 use std::iter::FromIterator;
 use std::str::FromStr;
 
@@ -17,6 +39,9 @@ pub use crate::header::Header;
 
 type SampleId = usize;
 type Radius = f64;
+
+/// Maximally flexible [SwcNeuron] with any structure specification and a free-text header.
+pub type AnySwc = SwcNeuron<AnyStructure, String>;
 
 /// Error in parsing a SWC sample (row).
 #[derive(thiserror::Error, Debug)]
@@ -321,8 +346,8 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
 
     /// Ensure that [SwcNeuron] is a self-consistent tree.
     ///
-    /// If `ignore_order` is `true`, samples' parents must be defined before they are.
-    pub fn validate(&self, ignore_order: bool) -> Result<(), InconsistentNeuronError> {
+    /// If `validate_order` is `false`, samples may be defined earlier in the file than their parents.
+    pub fn validate(&self, validate_order: bool) -> Result<(), InconsistentNeuronError> {
         use InconsistentNeuronError::*;
 
         // use sample IDs
@@ -336,7 +361,7 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
                 return Err(DuplicateSample(row.sample_id));
             }
             if let Some(p) = row.parent_id {
-                if !ignore_order && !sample_ids.contains(&p) {
+                if validate_order && !sample_ids.contains(&p) {
                     return Err(MissingSample(MissingSampleError { parent_sample: p }));
                 }
                 let entry = parent_to_children.entry(p).or_default();
@@ -380,26 +405,22 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
     /// Parse a [SwcNeuron] from a [Read]er.
     ///
     /// Does not check the neuron for consistency, but does check for valid structures.
-    pub fn from_reader<R: Read>(reader: R) -> Result<Self, SwcParseError> {
-        let buf = BufReader::new(reader);
-
-        let mut samples = Vec::default();
+    pub fn from_reader<R: BufRead>(reader: R) -> Result<Self, SwcParseError> {
         let mut is_header = true;
         let mut header_lines = Vec::default();
-        for result in buf.lines() {
-            let raw_line = result.map_err(SwcParseError::Read)?;
-            let line = raw_line.trim();
-            if line.starts_with('#') {
-                if is_header {
-                    header_lines.push(line.trim_start_matches('#').trim_start().to_string());
+        let mut samples = Vec::default();
+        for line_res in parse_swc_lines::<R, S>(reader) {
+            match line_res? {
+                SwcLine::Comment(cmt) => {
+                    if is_header {
+                        header_lines.push(cmt);
+                    }
                 }
-                continue;
+                SwcLine::Sample(s) => {
+                    is_header = false;
+                    samples.push(s);
+                }
             }
-            is_header = false;
-            if line.is_empty() {
-                continue;
-            }
-            samples.push(SwcSample::from_str(line)?);
         }
 
         let header: Option<H> = if header_lines.is_empty() {
@@ -417,19 +438,16 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
     }
 
     /// Dump this [SwcNeuron] to a [Write]r.
+    ///
+    /// These writes are quite small: consider wrapping it in a [BufWriter].
     pub fn to_writer<W: Write>(&self, writer: &mut W) -> Result<(), std::io::Error> {
-        let mut w = BufWriter::new(writer);
         if let Some(h) = self.header.clone() {
             for line in h.to_string().lines() {
-                if !line.starts_with('#') {
-                    writeln!(w, "# {}", line)?;
-                } else {
-                    writeln!(w, "{}", line)?;
-                }
+                writeln!(writer, "#{}", line)?;
             }
         }
         for s in self.samples.iter() {
-            writeln!(w, "{}", s.to_string())?;
+            writeln!(writer, "{}", s.to_string())?;
         }
         Ok(())
     }
@@ -437,5 +455,86 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
     /// Replace the existing header with a new one, returning the existing.
     pub fn replace_header(&mut self, header: Option<H>) -> Option<H> {
         std::mem::replace(&mut self.header, header)
+    }
+}
+
+pub enum SwcLine<S: StructureIdentifier> {
+    Comment(String),
+    Sample(SwcSample<S>),
+}
+
+/// Parse lines from a SWC file.
+///
+/// Skips blank lines and treats all `#`-prefixed lines as comments.
+/// Does not check the neuron for consistency, but does check for valid structures.
+pub fn parse_swc_lines<R: BufRead, S: StructureIdentifier>(
+    reader: R,
+) -> impl Iterator<Item = Result<SwcLine<S>, SwcParseError>> {
+    reader.lines().filter_map(|ln_res| {
+        let raw_line = match ln_res {
+            Ok(ln) => ln,
+            Err(e) => return Some(Err(SwcParseError::Read(e))),
+        };
+        let line = raw_line.trim_end();
+
+        if line.is_empty() {
+            None
+        } else if let Some(remainder) = line.strip_prefix('#') {
+            Some(Ok(SwcLine::Comment(remainder.to_string())))
+        } else {
+            match SwcSample::from_str(line) {
+                Ok(sample) => Some(Ok(SwcLine::Sample(sample))),
+                Err(err) => Some(Err(SwcParseError::SampleParse(err))),
+            }
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::{read_dir, File};
+    use std::io::BufReader;
+    use std::path::PathBuf;
+
+    fn data_dir() -> PathBuf {
+        let mut p = PathBuf::from_str(env!("CARGO_MANIFEST_DIR")).unwrap();
+        p.push("data");
+        p
+    }
+
+    fn data_files() -> impl IntoIterator<Item = PathBuf> {
+        let root = data_dir();
+        read_dir(&root).unwrap().into_iter().filter_map(|er| {
+            let e = er.unwrap();
+            let p = e.path();
+            if p.is_file() && p.ends_with(".swc") {
+                Some(p)
+            } else {
+                None
+            }
+        })
+    }
+
+    fn all_swcs() -> impl IntoIterator<Item = AnySwc> {
+        data_files().into_iter().map(|p| {
+            let f = File::open(&p).unwrap();
+            AnySwc::from_reader(BufReader::new(f))
+                .expect(format!("Could not read {:?}", p.as_os_str()).as_str())
+        })
+    }
+
+    #[test]
+    fn can_read() {
+        for _ in all_swcs() {
+            ();
+        }
+    }
+
+    #[test]
+    fn can_validate() {
+        for swc in all_swcs() {
+            swc.validate(true).expect("Invalid SWC");
+        }
     }
 }

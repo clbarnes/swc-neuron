@@ -1,12 +1,12 @@
 use std::collections::HashSet;
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, BufReader, BufWriter, Write};
 use std::path::PathBuf;
 
 use structopt::StructOpt;
 
 use swc_neuron::{
-    AnyStructure, CnicStructure, GulyasStructure, Header, NeuromorphoStructure,
+    AnySwc, CnicStructure, GulyasStructure, Header, NeuromorphoStructure,
     StructureIdentifier, SwcNeuron, VnedStructure,
 };
 
@@ -17,7 +17,7 @@ use swc_neuron::{
 /// Implementation is based on the "specification" at
 /// http://www.neuronland.org/NLMorphologyConverter/MorphologyFormats/SWC/Spec.html
 ///
-/// All headers, blank lines, and whitespace separators other than a single space character will be removed.
+/// All headers, blank lines, and whitespace separators other than a single space character between each field will be removed.
 struct Opt {
     /// Sort the samples topologically in depth first preorder from the root; must be a valid tree
     #[structopt(short, long)]
@@ -100,9 +100,11 @@ fn bad_structures<S: StructureIdentifier, H: Header>(
 
 fn read<S: StructureIdentifier, H: Header>(input: PathBuf) -> anyhow::Result<SwcNeuron<S, H>> {
     if input == PathBuf::from("-") {
-        Ok(SwcNeuron::from_reader(io::stdin())?)
+        Ok(SwcNeuron::from_reader(BufReader::new(io::stdin()))?)
     } else {
-        Ok(SwcNeuron::from_reader(fs::File::open(input)?)?)
+        Ok(SwcNeuron::from_reader(BufReader::new(fs::File::open(
+            input,
+        )?))?)
     }
 }
 
@@ -111,9 +113,9 @@ fn write<S: StructureIdentifier, H: Header>(
     neuron: SwcNeuron<S, H>,
 ) -> anyhow::Result<()> {
     if output.is_none() || output == Some(PathBuf::from("-")) {
-        neuron.to_writer(&mut io::stdout())?;
+        neuron.to_writer(&mut BufWriter::new(io::stdout()))?;
     } else {
-        neuron.to_writer(&mut fs::File::create(output.unwrap())?)?;
+        neuron.to_writer(&mut BufWriter::new(fs::File::create(output.unwrap())?))?;
     }
     Ok(())
 }
@@ -125,14 +127,14 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
     let input = opt.input.unwrap();
-    let mut nrn: SwcNeuron<AnyStructure, String> = read(input)?;
+    let mut nrn: AnySwc = read(input)?;
 
     if let Some(s) = opt.structures {
         let allowed = parse_structures(&s[..], opt.no_catchall)?;
         if let Some(a) = allowed {
             let bad = bad_structures(&a, &nrn);
             if !bad.is_empty() {
-                anyhow::bail!("Found {} unspecified structures", bad.len());
+                anyhow::bail!("Found {} unspecified structures: {:?}", bad.len(), bad);
             }
         }
     }
