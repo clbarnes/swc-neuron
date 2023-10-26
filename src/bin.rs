@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use structopt::StructOpt;
 
 use swc_neuron::{
-    AnySwc, CnicStructure, GulyasStructure, Header, NeuromorphoStructure,
-    StructureIdentifier, SwcNeuron, VnedStructure,
+    AnySwc, CnicStructure, GulyasStructure, Header, NeuromorphoStructure, StructureIdentifier,
+    SwcNeuron, VnedStructure,
 };
 
 #[derive(Debug, StructOpt)]
