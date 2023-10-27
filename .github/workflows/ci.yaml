@@ -25,9 +25,9 @@ jobs:
       - run: cargo test --all-features
       - run: |
           for NAME in data/*.swc; do
-            cargo run --all-features -- --toposort $NAME > /dev/null;
-            cargo run --all-features -- --sort --reindex $NAME > /dev/null;
-            cargo run --all-features -- --validate $NAME > /dev/null;
+            cargo run --all-features -- --toposort $NAME;
+            cargo run --all-features -- --sort --reindex $NAME;
+            cargo run --all-features -- --validate $NAME;
           done
 
   deploy:

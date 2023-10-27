@@ -1,12 +1,16 @@
+//! Module for types represented by the structure ID field of a SWC sample.
+//!
+//! Contains some known structure schemas and macros for creating more.
 use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::fmt::Debug;
 
+/// Trait for the structures represented by samples, identified by an integer.
 pub trait StructureIdentifier: Copy + Clone + Debug + TryFrom<isize> + Into<isize> {
     /// If the structure field allows for any value, return `None`;
     /// otherwise, return `Some(HashSet<allowed_values>)`.
     /// `no_catchall`, if `true`, ignores the "catch-all" variant
-    /// in determining what is allowed if present.
+    /// in determining what is allowed, if present.
     fn allowed_values(no_catchall: bool) -> Option<HashSet<isize>>;
 }
 
@@ -129,6 +133,15 @@ macro_rules! neuromorpho_ext {
 
 neuromorpho_ext!(NeuromorphoStructure, Custom);
 neuromorpho_ext!(CnicStructure, 5 = ForkPoint, 6 = EndPoint, 7 = Custom);
+neuromorpho_ext!(
+    NavisStructure,
+    5 = ForkPoint,
+    6 = EndPoint,
+    7 = Presynapse,
+    8 = Postsynapse,
+    9 = PreAndPostsynapse,
+    Custom,
+);
 neuromorpho_ext!(VnedStructure, 10 = SomaRelated, Custom);
 
 structure_mapping!(GulyasStructure, IsoDiameterStructure);

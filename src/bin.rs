@@ -5,10 +5,10 @@ use std::path::PathBuf;
 
 use structopt::StructOpt;
 
-use swc_neuron::{
-    AnySwc, CnicStructure, GulyasStructure, Header, NeuromorphoStructure, StructureIdentifier,
-    SwcNeuron, VnedStructure,
+use swc_neuron::structures::{
+    CnicStructure, GulyasStructure, NavisStructure, NeuromorphoStructure, VnedStructure,
 };
+use swc_neuron::{AnySwc, Header, StructureIdentifier, SwcNeuron};
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "swctool")]
@@ -23,7 +23,7 @@ struct Opt {
     #[structopt(short, long)]
     toposort: bool,
 
-    /// Check that SWC describes a valid tree. --toposort also will also validate the tree structure.
+    /// Check that SWC describes a valid tree. --toposort requires a valid tree structure.
     #[structopt(short = "V", long)]
     validate: bool,
 
@@ -40,8 +40,8 @@ struct Opt {
     #[structopt(short, long)]
     reindex: bool,
 
-    /// If given, structure IDs will be checked against the given comma-separated list.
-    /// Also accepts the names of known SWC sub-specifications: "neuromorpho", "cnic", "vned", "gulyas".
+    /// If given, structure IDs will be checked against the given comma-separated list of integers.
+    /// Also accepts the names of known SWC sub-specifications: "neuromorpho", "cnic", "vned", "gulyas", "navis".
     /// If your schema extends a known sub-spec, give e.g. "cnic,8,9,10"
     #[structopt(short = "S", long)]
     structures: Option<String>,
@@ -51,11 +51,11 @@ struct Opt {
     #[structopt(short, long)]
     no_catchall: bool,
 
-    /// Input file; reads from stdin if -
+    /// Input file; does nothing if not given, reads from stdin if -
     #[structopt(parse(from_os_str))]
     input: Option<PathBuf>,
 
-    /// Output file; writes to stdout if empty or -
+    /// Output file; writes nothing if not given, writes to stdout if -
     #[structopt(parse(from_os_str))]
     output: Option<PathBuf>,
 }
@@ -71,6 +71,7 @@ fn parse_structures(input: &str, no_catchall: bool) -> anyhow::Result<Option<Has
         "neuromorpho" => NeuromorphoStructure::allowed_values(no_catchall),
         "vned" => VnedStructure::allowed_values(no_catchall),
         "gulyas" => GulyasStructure::allowed_values(no_catchall),
+        "navis" => NavisStructure::allowed_values(no_catchall),
         n => Some(vec![n.parse()?].into_iter().collect()),
     };
 
@@ -112,11 +113,14 @@ fn write<S: StructureIdentifier, H: Header>(
     output: Option<PathBuf>,
     neuron: SwcNeuron<S, H>,
 ) -> anyhow::Result<()> {
-    if output.is_none() || output == Some(PathBuf::from("-")) {
-        neuron.to_writer(&mut BufWriter::new(io::stdout()))?;
-    } else {
-        neuron.to_writer(&mut BufWriter::new(fs::File::create(output.unwrap())?))?;
+    if let Some(p) = output {
+        if p == PathBuf::from("-") {
+            neuron.to_writer(&mut BufWriter::new(io::stdout()))?;
+        } else {
+            neuron.to_writer(&mut BufWriter::new(fs::File::create(p)?))?;
+        }
     }
+
     Ok(())
 }
 

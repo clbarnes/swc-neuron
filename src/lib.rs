@@ -27,14 +27,11 @@ use std::io::{BufRead, Write};
 use std::iter::FromIterator;
 use std::str::FromStr;
 
-mod structures;
+pub mod structures;
 
-pub use crate::structures::{
-    AnyStructure, CnicStructure, GulyasStructure, NeuromorphoStructure, StructureIdentifier,
-    VnedStructure,
-};
+pub use crate::structures::{AnyStructure, StructureIdentifier};
 
-mod header;
+pub mod header;
 pub use crate::header::Header;
 
 type SampleId = usize;
