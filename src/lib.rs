@@ -22,9 +22,11 @@
 //! [AnySwc] is a [SwcNeuron] with any structure integer and string header.
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
+use std::convert::{TryFrom, TryInto};
 use std::fmt::Debug;
-use std::io::{BufRead, Write};
+use std::io::{self, BufRead, Lines, Write};
 use std::iter::FromIterator;
+use std::marker::PhantomData;
 use std::str::FromStr;
 
 pub mod structures;
@@ -39,6 +41,9 @@ type Radius = f64;
 
 /// Maximally flexible [SwcNeuron] with any structure specification and a free-text header.
 pub type AnySwc = SwcNeuron<AnyStructure, String>;
+
+pub const HEADER_BUF_LEN: usize = 512;
+pub const LINE_BUF_LEN: usize = 128;
 
 /// Error in parsing a SWC sample (row).
 #[derive(thiserror::Error, Debug)]
@@ -403,35 +408,7 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
     ///
     /// Does not check the neuron for consistency, but does check for valid structures.
     pub fn from_reader<R: BufRead>(reader: R) -> Result<Self, SwcParseError> {
-        let mut is_header = true;
-        let mut header_lines = Vec::default();
-        let mut samples = Vec::default();
-        for line_res in parse_swc_lines::<R, S>(reader) {
-            match line_res? {
-                SwcLine::Comment(cmt) => {
-                    if is_header {
-                        header_lines.push(cmt);
-                    }
-                }
-                SwcLine::Sample(s) => {
-                    is_header = false;
-                    samples.push(s);
-                }
-            }
-        }
-
-        let header: Option<H> = if header_lines.is_empty() {
-            None
-        } else {
-            let header_str = header_lines.join("\n");
-            Some(
-                header_str
-                    .parse()
-                    .map_err(|_e| SwcParseError::HeaderParse(header_str))?,
-            )
-        };
-
-        Ok(Self { samples, header })
+        SwcLines::<S, R>::new(reader)?.try_into()
     }
 
     /// Dump this [SwcNeuron] to a [Write]r.
@@ -455,9 +432,129 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
     }
 }
 
+impl<S: StructureIdentifier, H: Header, R: BufRead> TryFrom<SwcLines<S, R>> for SwcNeuron<S, H> {
+    type Error = SwcParseError;
+
+    fn try_from(mut lines: SwcLines<S, R>) -> Result<Self, Self::Error> {
+        let header: Option<H> = if let Some(h_res) = lines.header() {
+            let h = h_res.map_err(|_e| SwcParseError::HeaderParse(lines.header_string.clone()))?;
+            Some(h)
+        } else {
+            None
+        };
+
+        let mut samples = Vec::default();
+        for ln_res in lines {
+            match ln_res? {
+                SwcLine::Comment(_) => (),
+                SwcLine::Sample(s) => samples.push(s),
+            }
+        }
+        Ok(Self { samples, header })
+    }
+}
+
+/// [Iterator] which eagerly reads the header on construction and then lazily reads the remaining lines.
+pub struct SwcLines<S: StructureIdentifier, R: BufRead> {
+    inner: SwcFileLines<S, R>,
+    header_string: String,
+    next_row: Option<<SwcFileLines<S, R> as Iterator>::Item>,
+}
+
+impl<S: StructureIdentifier, R: BufRead> SwcLines<S, R> {
+    pub fn new(reader: R) -> Result<Self, io::Error> {
+        let mut inner = SwcFileLines::new(reader);
+        let mut header_string = String::with_capacity(HEADER_BUF_LEN);
+        let mut next_row = None;
+
+        loop {
+            let Some(ln) = inner.next() else {
+                break;
+            };
+            match ln {
+                Ok(SwcLine::Comment(c)) => {
+                    header_string.push('\n');
+                    header_string.push_str(&c);
+                }
+                _ => {
+                    next_row = Some(ln);
+                    break;
+                }
+            }
+        }
+
+        Ok(Self {
+            inner,
+            header_string,
+            next_row,
+        })
+    }
+
+    pub fn header<H: Header>(&mut self) -> Option<Result<H, <H as std::str::FromStr>::Err>> {
+        if self.header_string.is_empty() {
+            None
+        } else {
+            Some(self.header_string.parse::<H>())
+        }
+    }
+}
+
+impl<S: StructureIdentifier, R: BufRead> Iterator for SwcLines<S, R> {
+    type Item = Result<SwcLine<S>, SwcParseError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(o) = self.next_row.take() {
+            return Some(o);
+        }
+        self.inner.next()
+    }
+}
+
+/// Line in a SWC file, which might be a comment or sample.
 pub enum SwcLine<S: StructureIdentifier> {
     Comment(String),
     Sample(SwcSample<S>),
+}
+
+/// [Iterator] which produces [SwcLine]s from a [Read]er.
+struct SwcFileLines<S: StructureIdentifier, R: BufRead> {
+    lines: Lines<R>,
+    _s: PhantomData<S>,
+}
+
+impl<S: StructureIdentifier, R: BufRead> SwcFileLines<S, R> {
+    fn new(reader: R) -> Self {
+        Self {
+            lines: reader.lines(),
+            _s: PhantomData,
+        }
+    }
+}
+
+impl<S: StructureIdentifier, R: BufRead> Iterator for SwcFileLines<S, R> {
+    type Item = Result<SwcLine<S>, SwcParseError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let raw_line = match self.lines.next()? {
+                Ok(s) => s,
+                Err(e) => return Some(Err(SwcParseError::Read(e))),
+            };
+
+            let line = raw_line.trim_end();
+
+            if line.is_empty() {
+                continue;
+            } else if let Some(remainder) = line.strip_prefix('#') {
+                return Some(Ok(SwcLine::Comment(remainder.to_string())));
+            } else {
+                return match SwcSample::from_str(line) {
+                    Ok(sample) => Some(Ok(SwcLine::Sample(sample))),
+                    Err(err) => Some(Err(SwcParseError::SampleParse(err))),
+                };
+            }
+        }
+    }
 }
 
 /// Parse lines from a SWC file.
@@ -467,24 +564,7 @@ pub enum SwcLine<S: StructureIdentifier> {
 pub fn parse_swc_lines<R: BufRead, S: StructureIdentifier>(
     reader: R,
 ) -> impl Iterator<Item = Result<SwcLine<S>, SwcParseError>> {
-    reader.lines().filter_map(|ln_res| {
-        let raw_line = match ln_res {
-            Ok(ln) => ln,
-            Err(e) => return Some(Err(SwcParseError::Read(e))),
-        };
-        let line = raw_line.trim_end();
-
-        if line.is_empty() {
-            None
-        } else if let Some(remainder) = line.strip_prefix('#') {
-            Some(Ok(SwcLine::Comment(remainder.to_string())))
-        } else {
-            match SwcSample::from_str(line) {
-                Ok(sample) => Some(Ok(SwcLine::Sample(sample))),
-                Err(err) => Some(Err(SwcParseError::SampleParse(err))),
-            }
-        }
-    })
+    SwcFileLines::new(reader)
 }
 
 #[cfg(test)]
@@ -500,7 +580,7 @@ mod tests {
         p
     }
 
-    fn data_files() -> impl IntoIterator<Item = PathBuf> {
+    fn data_paths() -> impl IntoIterator<Item = PathBuf> {
         let root = data_dir();
         read_dir(&root).unwrap().into_iter().filter_map(|er| {
             let e = er.unwrap();
@@ -514,7 +594,7 @@ mod tests {
     }
 
     fn all_swcs() -> impl IntoIterator<Item = AnySwc> {
-        data_files().into_iter().map(|p| {
+        data_paths().into_iter().map(|p| {
             let f = File::open(&p).unwrap();
             AnySwc::from_reader(BufReader::new(f))
                 .expect(format!("Could not read {:?}", p.as_os_str()).as_str())
@@ -523,8 +603,9 @@ mod tests {
 
     #[test]
     fn can_read() {
-        for _ in all_swcs() {
-            ();
+        for s in all_swcs() {
+            assert!(matches!(s.header, Some(h) if !h.is_empty()));
+            assert!(!s.samples.is_empty());
         }
     }
 
