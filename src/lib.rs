@@ -355,7 +355,7 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
         // use sample IDs
         let mut parent_to_children: HashMap<SampleId, Vec<SampleId>> =
             HashMap::with_capacity(self.samples.len());
-        let mut sample_ids: HashSet<usize> = HashSet::with_capacity(self.samples.len());
+        let mut sample_ids: HashSet<SampleId> = HashSet::with_capacity(self.samples.len());
         let mut root = None;
 
         for row in self.samples.iter() {
