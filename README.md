@@ -20,6 +20,8 @@ All other `#`-prefixed and all whitespace-only lines in the file after the first
 
 ## swctool
 
+Included with the `cli` feature.
+
 ```_swctool
 swctool 0.2.1
 Tool for manipulating and validating SWC neuronal morphology files.

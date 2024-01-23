@@ -36,7 +36,7 @@ pub use crate::structures::{AnyStructure, StructureIdentifier};
 pub mod header;
 pub use crate::header::Header;
 
-type SampleId = usize;
+type SampleId = u64;
 type Radius = f64;
 
 /// Maximally flexible [SwcNeuron] with any structure specification and a free-text header.
@@ -202,7 +202,7 @@ pub enum SwcParseError {
 #[derive(thiserror::Error, Debug)]
 #[error("Parent sample {parent_sample} does not exist")]
 pub struct MissingSampleError {
-    parent_sample: usize,
+    parent_sample: SampleId,
 }
 
 /// Error where a neuron represented by a SWC file is inconsistent.
@@ -240,7 +240,7 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
             .samples
             .iter()
             .enumerate()
-            .map(|(idx, row)| (row.sample_id, idx + 1))
+            .map(|(idx, row)| (row.sample_id, idx as SampleId + 1))
             .collect();
 
         let mut samples = Vec::with_capacity(self.samples.len());
@@ -255,7 +255,7 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
             } else {
                 parent = None;
             }
-            samples.push(row.with_ids(idx + 1, parent));
+            samples.push(row.with_ids(idx as u64 + 1, parent));
         }
 
         Ok(Self {
