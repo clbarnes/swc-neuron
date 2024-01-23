@@ -430,6 +430,16 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
     pub fn replace_header(&mut self, header: Option<H>) -> Option<H> {
         std::mem::replace(&mut self.header, header)
     }
+
+    /// Create a new header by applying a function to this [SwcNeuron],
+    /// then create a new neuron with that header.
+    pub fn map_header<H2: Header, F: Fn(&Self) -> Option<H2>>(self, f: F) -> SwcNeuron<S, H2> {
+        let header = f(&self);
+        SwcNeuron {
+            header,
+            samples: self.samples,
+        }
+    }
 }
 
 impl<S: StructureIdentifier, H: Header, R: BufRead> TryFrom<SwcLines<S, R>> for SwcNeuron<S, H> {
