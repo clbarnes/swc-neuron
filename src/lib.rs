@@ -38,8 +38,15 @@ pub use crate::structures::{AnyStructure, StructureIdentifier};
 pub mod header;
 pub use crate::header::Header;
 
-type SampleId = u64;
-type Radius = f64;
+/// Type used for sample IDs.
+///
+/// SWC files use -1 for the parent ID of the root sample,
+/// but this package uses a signed ID type with the root's parent as `None`.
+pub type SampleId = u64;
+
+/// Float type used for locations and radii.
+pub type Precision = f64;
+type Radius = Precision;
 
 /// Maximally flexible [SwcNeuron] with any structure specification and a free-text header.
 pub type AnySwc = SwcNeuron<AnyStructure, String>;
@@ -75,11 +82,11 @@ pub struct SwcSample<S: StructureIdentifier> {
     /// SWC structure enum
     pub structure: S,
     /// X location
-    pub x: f64,
+    pub x: Precision,
     /// Y location
-    pub y: f64,
+    pub y: Precision,
     /// Z location
-    pub z: f64,
+    pub z: Precision,
     /// Radius of the neuron at this sample
     pub radius: Radius,
     /// ID of the parent sample (None if this is the root)
@@ -107,19 +114,19 @@ impl<S: StructureIdentifier> FromStr for SwcSample<S> {
         let x = items
             .next()
             .ok_or(SampleParseError::IncorrectNumFields(2))?
-            .parse::<f64>()?;
+            .parse::<Precision>()?;
         let y = items
             .next()
             .ok_or(SampleParseError::IncorrectNumFields(3))?
-            .parse::<f64>()?;
+            .parse::<Precision>()?;
         let z = items
             .next()
             .ok_or(SampleParseError::IncorrectNumFields(4))?
-            .parse::<f64>()?;
+            .parse::<Precision>()?;
         let radius = items
             .next()
             .ok_or(SampleParseError::IncorrectNumFields(5))?
-            .parse::<f64>()?;
+            .parse::<Radius>()?;
         let parent_id = match items.next() {
             Some("-1") => None,
             Some(p_str) => Some(p_str.parse()?),
