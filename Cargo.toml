@@ -28,6 +28,13 @@ name = "swctool"
 path = "src/bin.rs"
 required-features = ["cli"]
 
+[dev-dependencies]
+criterion = "0.5.1"
+
 [package.metadata.release]
 publish = false
 # no-dev-version = true
+
+[[bench]]
+name = "swc"
+harness = false

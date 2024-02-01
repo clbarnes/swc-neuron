@@ -226,6 +226,14 @@ pub enum InconsistentNeuronError {
 }
 
 impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
+    pub fn len(&self) -> usize {
+        self.samples.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.samples.is_empty()
+    }
+
     /// Sort the neuron's samples by their index.
     pub fn sort_index(mut self) -> Self {
         self.samples
