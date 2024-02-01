@@ -30,6 +30,7 @@ pub trait StructureIdentifier: Copy + Clone + Debug + TryFrom<isize> + Into<isiz
 macro_rules! structure_mapping {
     ( $id:ident $(, $val:literal = $name:ident )* $(,)?) => {
         #[derive(Copy, Clone, Debug)]
+        #[allow(missing_docs)]
         pub enum $id {
             $( $name, )+
         }
@@ -62,6 +63,7 @@ macro_rules! structure_mapping {
     };
     ( $id:ident $(, $val:literal = $name:ident )*, $othername:ident $(,)?) => {
         #[derive(Copy, Clone, Debug)]
+        #[allow(missing_docs)]
         pub enum $id {
             $( $name, )*
             $othername(isize),

@@ -20,6 +20,8 @@
 //! [StructureIdentifier] is implemented for some known sub-specifications.
 //! [Header] is implemented for [String] (i.e. a free-text header field).
 //! [AnySwc] is a [SwcNeuron] with any structure integer and string header.
+
+#![warn(missing_docs)]
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 use std::convert::{TryFrom, TryInto};
@@ -42,8 +44,7 @@ type Radius = f64;
 /// Maximally flexible [SwcNeuron] with any structure specification and a free-text header.
 pub type AnySwc = SwcNeuron<AnyStructure, String>;
 
-pub const HEADER_BUF_LEN: usize = 512;
-pub const LINE_BUF_LEN: usize = 128;
+pub(crate) const HEADER_BUF_LEN: usize = 512;
 
 /// Error in parsing a SWC sample (row).
 #[derive(thiserror::Error, Debug)]
@@ -69,12 +70,19 @@ pub enum SampleParseError {
 /// If the `parent_id` is None, this is a root node.
 #[derive(Debug, Clone, Copy)]
 pub struct SwcSample<S: StructureIdentifier> {
+    /// ID of the SWC sample
     pub sample_id: SampleId,
+    /// SWC structure enum
     pub structure: S,
+    /// X location
     pub x: f64,
+    /// Y location
     pub y: f64,
+    /// Z location
     pub z: f64,
+    /// Radius of the neuron at this sample
     pub radius: Radius,
+    /// ID of the parent sample (None if this is the root)
     pub parent_id: Option<SampleId>,
 }
 
@@ -171,7 +179,9 @@ impl<S: StructureIdentifier> SwcSample<S> {
 /// Struct representing a neuron skeleton as a tree of [SwcSample]s.
 #[derive(Debug, Clone)]
 pub struct SwcNeuron<S: StructureIdentifier, H: Header> {
+    /// Samples present in the SWC file.
     pub samples: Vec<SwcSample<S>>,
+    /// Header of the SWC file
     pub header: Option<H>,
 }
 
@@ -226,10 +236,12 @@ pub enum InconsistentNeuronError {
 }
 
 impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
+    /// Number of samples in the neuron.
     pub fn len(&self) -> usize {
         self.samples.len()
     }
 
+    /// Whether there are any samples in the neuron.
     pub fn is_empty(&self) -> bool {
         self.samples.is_empty()
     }
@@ -480,6 +492,7 @@ pub struct SwcLines<S: StructureIdentifier, R: BufRead> {
 }
 
 impl<S: StructureIdentifier, R: BufRead> SwcLines<S, R> {
+    /// Create a new [SwcLines] iterator from a reader.
     pub fn new(reader: R) -> Result<Self, io::Error> {
         let mut inner = SwcFileLines::new(reader);
         let mut header_string = String::with_capacity(HEADER_BUF_LEN);
@@ -508,6 +521,7 @@ impl<S: StructureIdentifier, R: BufRead> SwcLines<S, R> {
         })
     }
 
+    /// Parse the header string into a [Header] struct.
     pub fn header<H: Header>(&mut self) -> Option<Result<H, <H as std::str::FromStr>::Err>> {
         if self.header_string.is_empty() {
             None
@@ -530,13 +544,16 @@ impl<S: StructureIdentifier, R: BufRead> Iterator for SwcLines<S, R> {
 
 /// Line in a SWC file, which might be a comment or sample.
 pub enum SwcLine<S: StructureIdentifier> {
+    /// Comment line, which may be part of the header
     Comment(String),
+    /// Sample line
     Sample(SwcSample<S>),
 }
 
 /// [Iterator] which produces [SwcLine]s from a [Read]er.
 struct SwcFileLines<S: StructureIdentifier, R: BufRead> {
     lines: Lines<R>,
+    pub is_header: bool,
     _s: PhantomData<S>,
 }
 
@@ -544,6 +561,7 @@ impl<S: StructureIdentifier, R: BufRead> SwcFileLines<S, R> {
     fn new(reader: R) -> Self {
         Self {
             lines: reader.lines(),
+            is_header: true,
             _s: PhantomData,
         }
     }
@@ -567,7 +585,10 @@ impl<S: StructureIdentifier, R: BufRead> Iterator for SwcFileLines<S, R> {
                 return Some(Ok(SwcLine::Comment(remainder.to_string())));
             } else {
                 return match SwcSample::from_str(line) {
-                    Ok(sample) => Some(Ok(SwcLine::Sample(sample))),
+                    Ok(sample) => {
+                        self.is_header = false;
+                        Some(Ok(SwcLine::Sample(sample)))
+                    }
                     Err(err) => Some(Err(SwcParseError::SampleParse(err))),
                 };
             }
