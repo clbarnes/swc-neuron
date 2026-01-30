@@ -7,6 +7,9 @@ use std::fmt::Debug;
 
 /// Trait for the structures represented by samples, identified by an integer.
 pub trait StructureIdentifier: Copy + Clone + Debug + TryFrom<isize> + Into<isize> {
+    /// List all the variants which are not catch-alls.
+    fn known_variants() -> &'static[Self];
+
     /// If the structure field allows for any value, return `None`;
     /// otherwise, return `Some(HashSet<allowed_values>)`.
     /// `no_catchall`, if `true`, ignores the "catch-all" variant
@@ -59,6 +62,12 @@ macro_rules! structure_mapping {
         }
 
         impl StructureIdentifier for $id {
+            fn known_variants() -> &'static [Self] {
+                &[
+                    $( Self::$name, )*
+                ]
+            }
+
             fn allowed_values(_no_catchall: bool) -> Option<HashSet<isize>> {
                 Some(vec![$( $val, )*].into_iter().collect())
             }
@@ -98,6 +107,12 @@ macro_rules! structure_mapping {
         }
 
         impl StructureIdentifier for $id {
+            fn known_variants() -> &'static [Self] {
+                &[
+                    $( Self::$name, )*
+                ]
+            }
+
             fn allowed_values(no_catchall: bool) -> Option<HashSet<isize>> {
                 if no_catchall {
                     Some(vec![$( $val, )*].into_iter().collect())
