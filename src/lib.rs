@@ -25,7 +25,8 @@
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 use std::convert::{TryFrom, TryInto};
-use std::fmt::Debug;
+use std::error::Error;
+use std::fmt::{Debug, Display};
 use std::io::{self, BufRead, Lines, Write};
 use std::iter::FromIterator;
 use std::marker::PhantomData;
@@ -150,10 +151,11 @@ impl<S: StructureIdentifier> FromStr for SwcSample<S> {
     }
 }
 
-impl<S: StructureIdentifier> ToString for SwcSample<S> {
-    fn to_string(&self) -> String {
+impl<S: StructureIdentifier> Display for SwcSample<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let structure: isize = self.structure.into();
-        format!(
+        write!(
+            f,
             "{} {} {} {} {} {} {}",
             self.sample_id,
             structure,
@@ -260,14 +262,14 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
         self
     }
 
-    /// Re-index the neuron's samples in order of occurrence, starting at 1.
+    /// Re-index the neuron's samples in order of occurrence, starting at the given ID and incrementing.
     /// Returns error if the SWC is missing a parent sample
-    pub fn reindex(self) -> Result<Self, MissingSampleError> {
+    pub fn reindex_from(self, first_id: SampleId) -> Result<Self, MissingSampleError> {
         let old_to_new: HashMap<SampleId, SampleId> = self
             .samples
             .iter()
             .enumerate()
-            .map(|(idx, row)| (row.sample_id, idx as SampleId + 1))
+            .map(|(idx, row)| (row.sample_id, idx as SampleId + first_id))
             .collect();
 
         let mut samples = Vec::with_capacity(self.samples.len());
@@ -289,6 +291,12 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
             samples,
             header: self.header,
         })
+    }
+
+    /// Re-index the neuron's samples in order of occurrence, starting at 1.
+    /// Returns error if the SWC is missing a parent sample
+    pub fn reindex(self) -> Result<Self, MissingSampleError> {
+        self.reindex_from(1)
     }
 
     /// Re-order its samples in pre-order depth first search.
@@ -448,7 +456,7 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
             }
         }
         for s in self.samples.iter() {
-            writeln!(writer, "{}", s.to_string())?;
+            writeln!(writer, "{}", s)?;
         }
         Ok(())
     }
@@ -460,12 +468,41 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
 
     /// Create a new header by applying a function to this [SwcNeuron],
     /// then create a new neuron with that header.
-    pub fn map_header<H2: Header, F: Fn(&Self) -> Option<H2>>(self, f: F) -> SwcNeuron<S, H2> {
-        let header = f(&self);
-        SwcNeuron {
+    pub fn try_map_header<H2: Header, E: Error, F: Fn(&Self) -> Result<Option<H2>, E>>(self, f: F) -> Result<SwcNeuron<S, H2>, E> {
+        let header = f(&self)?;
+        Ok(SwcNeuron {
             header,
             samples: self.samples,
-        }
+        })
+    }
+
+    /// Map every sample's structure to another type.
+    pub fn try_map_structure<S2: StructureIdentifier, E: Error, F: Fn(&S) -> Result<S2, E>>(
+        self,
+        f: F,
+    ) -> Result<SwcNeuron<S2, H>, E> {
+        let samples: Result<Vec<_>, E> = self
+            .samples
+            .into_iter()
+            .map(|s| Ok(SwcSample {
+                sample_id: s.sample_id,
+                structure: f(&s.structure)?,
+                x: s.x,
+                y: s.y,
+                z: s.z,
+                radius: s.radius,
+                parent_id: s.parent_id,
+            }))
+            .collect();
+        Ok(SwcNeuron {
+            samples: samples?,
+            header: self.header,
+        })
+    }
+
+    /// Get the highest sample ID in the neuron, if any samples exist.
+    pub fn max_idx(&self) -> Option<SampleId> {
+        self.samples.iter().map(|s| s.sample_id).max()
     }
 }
 
@@ -628,7 +665,7 @@ mod tests {
 
     fn data_paths() -> impl IntoIterator<Item = PathBuf> {
         let root = data_dir();
-        read_dir(&root).unwrap().into_iter().filter_map(|er| {
+        read_dir(&root).unwrap().filter_map(|er| {
             let e = er.unwrap();
             let p = e.path();
             if p.is_file() && p.ends_with(".swc") {
@@ -643,7 +680,7 @@ mod tests {
         data_paths().into_iter().map(|p| {
             let f = File::open(&p).unwrap();
             AnySwc::from_reader(BufReader::new(f))
-                .expect(format!("Could not read {:?}", p.as_os_str()).as_str())
+                .unwrap_or_else(|_| panic!("Could not read {:?}", p.as_os_str()))
         })
     }
 

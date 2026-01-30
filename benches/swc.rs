@@ -15,7 +15,7 @@ fn data_dir() -> PathBuf {
 
 fn data_paths() -> impl IntoIterator<Item = PathBuf> {
     let root = data_dir();
-    read_dir(&root).unwrap().into_iter().filter_map(|er| {
+    read_dir(&root).unwrap().filter_map(|er| {
         let e = er.unwrap();
         let p = e.path();
         if p.is_file() && p.ends_with(".swc") {

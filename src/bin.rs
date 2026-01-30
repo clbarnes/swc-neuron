@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::fs;
 use std::io::{self, BufReader, BufWriter, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use structopt::StructOpt;
 
@@ -99,8 +99,8 @@ fn bad_structures<S: StructureIdentifier, H: Header>(
     out
 }
 
-fn read<S: StructureIdentifier, H: Header>(input: PathBuf) -> anyhow::Result<SwcNeuron<S, H>> {
-    if input == PathBuf::from("-") {
+fn read<S: StructureIdentifier, H: Header, P: AsRef<Path>>(input: P) -> anyhow::Result<SwcNeuron<S, H>> {
+    if input.as_ref() == Path::new("-") {
         Ok(SwcNeuron::from_reader(BufReader::new(io::stdin()))?)
     } else {
         Ok(SwcNeuron::from_reader(BufReader::new(fs::File::open(
@@ -109,12 +109,12 @@ fn read<S: StructureIdentifier, H: Header>(input: PathBuf) -> anyhow::Result<Swc
     }
 }
 
-fn write<S: StructureIdentifier, H: Header>(
-    output: Option<PathBuf>,
+fn write<S: StructureIdentifier, H: Header, P: AsRef<Path>>(
+    output: Option<P>,
     neuron: SwcNeuron<S, H>,
 ) -> anyhow::Result<()> {
     if let Some(p) = output {
-        if p == PathBuf::from("-") {
+        if p.as_ref() == Path::new("-") {
             neuron.to_writer(&mut BufWriter::new(io::stdout()))?;
         } else {
             neuron.to_writer(&mut BufWriter::new(fs::File::create(p)?))?;
