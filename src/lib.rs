@@ -468,7 +468,10 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
 
     /// Create a new header by applying a function to this [SwcNeuron],
     /// then create a new neuron with that header.
-    pub fn try_map_header<H2: Header, E: Error, F: Fn(&Self) -> Result<Option<H2>, E>>(self, f: F) -> Result<SwcNeuron<S, H2>, E> {
+    pub fn try_map_header<H2: Header, E: Error, F: Fn(&Self) -> Result<Option<H2>, E>>(
+        self,
+        f: F,
+    ) -> Result<SwcNeuron<S, H2>, E> {
         let header = f(&self)?;
         Ok(SwcNeuron {
             header,
@@ -484,15 +487,17 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
         let samples: Result<Vec<_>, E> = self
             .samples
             .into_iter()
-            .map(|s| Ok(SwcSample {
-                sample_id: s.sample_id,
-                structure: f(&s.structure)?,
-                x: s.x,
-                y: s.y,
-                z: s.z,
-                radius: s.radius,
-                parent_id: s.parent_id,
-            }))
+            .map(|s| {
+                Ok(SwcSample {
+                    sample_id: s.sample_id,
+                    structure: f(&s.structure)?,
+                    x: s.x,
+                    y: s.y,
+                    z: s.z,
+                    radius: s.radius,
+                    parent_id: s.parent_id,
+                })
+            })
             .collect();
         Ok(SwcNeuron {
             samples: samples?,

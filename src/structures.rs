@@ -150,7 +150,7 @@ macro_rules! neuromorpho_ext {
     };
 }
 
-neuromorpho_ext!(NeuromorphoStructure, Custom );
+neuromorpho_ext!(NeuromorphoStructure, Custom);
 neuromorpho_ext!(CnicStructure, 5 = ForkPoint "fork point", 6 = EndPoint "end point", 7 = Custom "custom");
 neuromorpho_ext!(
     NavisStructure,

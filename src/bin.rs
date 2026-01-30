@@ -99,7 +99,9 @@ fn bad_structures<S: StructureIdentifier, H: Header>(
     out
 }
 
-fn read<S: StructureIdentifier, H: Header, P: AsRef<Path>>(input: P) -> anyhow::Result<SwcNeuron<S, H>> {
+fn read<S: StructureIdentifier, H: Header, P: AsRef<Path>>(
+    input: P,
+) -> anyhow::Result<SwcNeuron<S, H>> {
     if input.as_ref() == Path::new("-") {
         Ok(SwcNeuron::from_reader(BufReader::new(io::stdin()))?)
     } else {
