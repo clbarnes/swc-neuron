@@ -8,7 +8,7 @@ use std::fmt::Debug;
 /// Trait for the structures represented by samples, identified by an integer.
 pub trait StructureIdentifier: Copy + Clone + Debug + TryFrom<isize> + Into<isize> {
     /// List all the variants which are not catch-alls.
-    fn known_variants() -> &'static[Self];
+    fn known_variants() -> &'static [Self];
 
     /// If the structure field allows for any value, return `None`;
     /// otherwise, return `Some(HashSet<allowed_values>)`.
