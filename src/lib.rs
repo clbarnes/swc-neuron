@@ -284,7 +284,7 @@ impl<S: StructureIdentifier, H: Header> SwcNeuron<S, H> {
             } else {
                 parent = None;
             }
-            samples.push(row.with_ids(idx as u64 + 1, parent));
+            samples.push(row.with_ids(idx as u64 + first_id, parent));
         }
 
         Ok(Self {
